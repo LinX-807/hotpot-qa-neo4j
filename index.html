@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>HotpotQA — 多跳推理图谱</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/standalone/umd/vis-network.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+<style>
+:root{
+  --bg:#f0f4f8; --surf:#ffffff; --surf2:#f5f7fa; --surf3:#edf1f6;
+  --border:#dde3ec; --border2:#c8d1de;
+  --accent:#2563eb; --accent-glow:rgba(37,99,235,.12);
+  --green:#16a34a; --red:#dc2626; --yellow:#d97706; --purple:#7c3aed;
+  --text:#1a2332; --muted:#64748b; --muted2:#94a3b8;
+  --q:#7c3aed; --c:#2563eb; --s:#16a34a; --sup:#dc2626;
+  --r:10px; --r-sm:6px;
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --mono:'JetBrains Mono','Fira Code',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font);
+     font-size:14px;line-height:1.6;min-height:100vh}
+ 
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--surf2)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+ 
+header{
+  background:var(--surf);border-bottom:1px solid var(--border);
+  padding:0 28px;height:56px;display:flex;align-items:center;gap:14px;
+  position:sticky;top:0;z-index:200;
+  box-shadow:0 1px 12px rgba(0,0,0,.08);
+}
+.logo{font-size:17px;font-weight:700;letter-spacing:-.4px;white-space:nowrap}
+.logo em{color:var(--accent);font-style:normal}
+.logo-dot{width:7px;height:7px;background:var(--accent);
+          border-radius:50%;box-shadow:0 0 8px var(--accent);margin-right:4px;
+          display:inline-block}
+.chip{font-size:11px;padding:2px 9px;border-radius:20px;
+      background:var(--surf2);border:1px solid var(--border2);color:var(--muted)}
+.stat-row{margin-left:auto;display:flex;gap:24px}
+.stat{text-align:right}
+.stat .v{font-size:15px;font-weight:700;color:var(--accent);font-family:var(--mono)}
+.stat .l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+ 
+nav{
+  background:var(--surf);border-bottom:1px solid var(--border);
+  padding:0 28px;display:flex;gap:4px;
+}
+.tab{
+  padding:12px 18px;border:none;background:none;color:var(--muted);
+  font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;
+  transition:all .15s;white-space:nowrap;
+}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+ 
+.page{display:none;padding:24px 28px;max-width:1400px;margin:0 auto}
+.page.active{display:block}
+ 
+input[type=text],input[type=search]{
+  background:var(--surf2);border:1px solid var(--border2);border-radius:var(--r-sm);
+  padding:10px 14px;color:var(--text);font-size:14px;outline:none;
+  transition:border-color .15s,box-shadow .15s;width:100%;
+}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.btn{
+  padding:10px 20px;border-radius:var(--r-sm);border:none;cursor:pointer;
+  font-size:13px;font-weight:600;white-space:nowrap;transition:all .15s;
+}
+.btn-p{background:var(--accent);color:#fff}
+.btn-p:hover{filter:brightness(1.1);box-shadow:0 0 12px var(--accent-glow)}
+.btn-g{background:var(--surf3);color:var(--text);border:1px solid var(--border2)}
+.btn-g:hover{border-color:var(--accent);color:var(--accent)}
+.btn-sm{padding:5px 12px;font-size:12px}
+ 
+.card{background:var(--surf);border:1px solid var(--border);
+      border-radius:var(--r);padding:16px 20px}
+.card-title{font-size:11px;font-weight:600;color:var(--muted);
+            text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px}
+ 
+.tag{display:inline-block;padding:2px 8px;border-radius:12px;
+     font-size:11px;font-weight:600;margin-right:4px}
+.tag-bridge{background:#dbeafe;color:#1d4ed8}
+.tag-comparison{background:#fef3c7;color:#92400e}
+.tag-easy{background:#dcfce7;color:#15803d}
+.tag-medium{background:#fef3c7;color:#92400e}
+.tag-hard{background:#fee2e2;color:#b91c1c}
+ 
+.q-list{display:flex;flex-direction:column;gap:6px}
+.q-item{
+  background:var(--surf2);border:1px solid var(--border);
+  border-radius:var(--r-sm);padding:12px 16px;cursor:pointer;
+  display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;
+  transition:all .15s;
+}
+.q-item:hover{border-color:var(--accent);background:var(--surf3)}
+.q-text{font-size:13px;line-height:1.5}
+.q-ans{font-size:12px;color:var(--green);font-family:var(--mono);
+       max-width:180px;text-align:right;word-break:break-word}
+.q-meta{font-size:11px;color:var(--muted);margin-top:4px}
+ 
+.ans-card{
+  background:linear-gradient(135deg,#eff6ff,#f0fdf4);
+  border:1px solid #bfdbfe;border-radius:var(--r);
+  padding:20px 24px;margin-bottom:10px;
+  box-shadow:0 2px 12px rgba(37,99,235,.08);
+}
+.ans-card .ans-q{font-size:15px;font-weight:600;color:var(--text);
+                  margin-bottom:12px;line-height:1.5}
+.ans-card .ans-a{
+  font-size:20px;font-weight:700;color:var(--green);
+  font-family:var(--mono);margin-bottom:16px;
+}
+.ans-card .ans-label{font-size:11px;color:var(--muted);
+                      text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.facts-list{display:flex;flex-direction:column;gap:6px}
+.fact-item{
+  background:#fff5f5;border:1px solid #fecaca;
+  border-radius:var(--r-sm);padding:10px 14px;font-size:13px;
+  line-height:1.6;position:relative;padding-left:22px;
+}
+.fact-item::before{
+  content:'';position:absolute;left:8px;top:16px;
+  width:6px;height:6px;border-radius:50%;
+  background:var(--red);box-shadow:0 0 6px var(--red);
+}
+.fact-source{font-size:11px;color:var(--muted);margin-top:4px;
+             font-style:italic}
+ 
+#graph-layout{
+  display:grid;grid-template-columns:300px 1fr;
+  gap:14px;height:calc(100vh - 200px);min-height:540px;
+}
+#graph-sidebar{display:flex;flex-direction:column;gap:10px;overflow-y:auto}
+#graph-canvas{
+  background:var(--surf);border:1px solid var(--border);
+  border-radius:var(--r);overflow:hidden;position:relative;
+}
+#graph-controls{
+  position:absolute;top:12px;right:12px;z-index:10;
+  display:flex;gap:6px;
+}
+.legend{display:flex;flex-wrap:wrap;gap:8px}
+.leg{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)}
+.leg-dot{width:9px;height:9px;border-radius:50%}
+#node-info{flex:1;overflow-y:auto;min-height:0}
+.node-info-body{font-size:13px;line-height:1.7;color:var(--text)}
+.info-key{font-size:11px;color:var(--muted);text-transform:uppercase;
+          letter-spacing:.5px;margin-top:10px;margin-bottom:2px}
+ 
+.filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+.filter-group{display:flex;gap:4px}
+.filter-btn{
+  padding:5px 14px;border-radius:20px;border:1px solid var(--border2);
+  background:var(--surf);color:var(--text);font-size:12px;cursor:pointer;
+  transition:all .15s;
+}
+.filter-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--surf2)}
+.filter-btn.active{background:var(--accent);border-color:var(--accent);
+                   color:#fff;font-weight:600}
+ 
+.cluster-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px}
+.chart-card{background:var(--surf);border:1px solid var(--border);
+            border-radius:var(--r);padding:16px}
+.chart-card h3{font-size:12px;color:var(--muted);font-weight:600;
+               text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
+.chart-h{width:100%;height:260px}
+.chart-wide{height:200px}
+.topic-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.topic-card{
+  background:var(--surf2);border:1px solid var(--border);
+  border-radius:var(--r);padding:14px;cursor:pointer;transition:all .15s;
+  position:relative;overflow:hidden;
+}
+.topic-card::before{
+  content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--tc,var(--accent));
+}
+.topic-card:hover{border-color:var(--tc,var(--accent));transform:translateY(-2px);
+                  box-shadow:0 4px 16px rgba(0,0,0,.1)}
+.topic-card .tc-name{font-size:13px;font-weight:600;margin-bottom:4px}
+.topic-card .tc-count{font-size:22px;font-weight:700;font-family:var(--mono);
+                       color:var(--tc,var(--accent))}
+.topic-card .tc-pct{font-size:11px;color:var(--muted)}
+.topic-examples{margin-top:10px;display:none}
+.topic-examples.open{display:block}
+.topic-ex-item{font-size:12px;color:var(--muted);padding:4px 0;
+               border-top:1px solid var(--border);cursor:pointer}
+.topic-ex-item:hover{color:var(--accent)}
+ 
+.loading{color:var(--muted);font-size:13px;padding:24px 0;
+         display:flex;align-items:center;gap:8px}
+.spin{width:15px;height:15px;border:2px solid var(--border2);
+      border-top-color:var(--accent);border-radius:50%;
+      animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{color:var(--muted);font-size:13px;text-align:center;
+       padding:48px;border:1px dashed var(--border);border-radius:var(--r)}
+.status-bar{font-size:12px;color:var(--muted);margin-bottom:10px}
+ 
+#toast{
+  position:fixed;bottom:24px;right:24px;z-index:999;
+  background:var(--surf3);border:1px solid var(--border2);
+  border-radius:var(--r-sm);padding:10px 16px;font-size:13px;
+  opacity:0;transform:translateY(8px);
+  transition:all .3s;pointer-events:none;max-width:280px;
+}
+#toast.show{opacity:1;transform:translateY(0)}
+ 
+@media(max-width:820px){
+  #graph-layout{grid-template-columns:1fr;height:auto}
+  #graph-canvas{height:420px}
+  .stat-row{display:none}
+  .page{padding:14px}
+}
+</style>
+</head>
+<body>
+ 
+<header>
+  <span class="logo-dot"></span>
+  <div class="logo">HotpotQA <em>Graph</em></div>
+  <span class="chip">静态数据 · 多跳推理</span>
+  <div class="stat-row" id="stat-row">
+    <div class="stat"><div class="v" id="st-q">—</div><div class="l">问题</div></div>
+    <div class="stat"><div class="v" id="st-c">—</div><div class="l">文章</div></div>
+    <div class="stat"><div class="v" id="st-s">—</div><div class="l">句子</div></div>
+  </div>
+</header>
+ 
+<nav>
+  <button class="tab active" data-tab="qa">问答查询</button>
+  <button class="tab" data-tab="search">检索浏览</button>
+  <button class="tab" data-tab="graph">多跳图谱</button>
+  <button class="tab" data-tab="cluster">聚类分析</button>
+</nav>
+ 
+<div class="page active" id="page-qa">
+  <div style="display:flex;gap:8px;margin-bottom:20px">
+    <input id="qa-input" type="text"
+      placeholder="输入问题关键词，例如：Who chaired the ceremony / born in / director of…"
+      onkeydown="if(event.key==='Enter')doAnswer()"/>
+    <button class="btn btn-p" onclick="doAnswer()">查询答案</button>
+  </div>
+  <div id="qa-status" class="status-bar"></div>
+  <div id="qa-results"></div>
+</div>
+ 
+<div class="page" id="page-search">
+  <div class="filter-bar">
+    <span style="font-size:12px;color:var(--muted);white-space:nowrap">题型：</span>
+    <div class="filter-group" id="fg-type">
+      <button class="filter-btn active" data-val="">全部</button>
+      <button class="filter-btn" data-val="bridge">Bridge</button>
+      <button class="filter-btn" data-val="comparison">Comparison</button>
+    </div>
+    <span style="font-size:12px;color:var(--muted);white-space:nowrap;margin-left:8px">难度：</span>
+    <div class="filter-group" id="fg-level">
+      <button class="filter-btn active" data-val="">全部</button>
+      <button class="filter-btn" data-val="easy">Easy</button>
+      <button class="filter-btn" data-val="medium">Medium</button>
+      <button class="filter-btn" data-val="hard">Hard</button>
+    </div>
+    <div style="flex:1;display:flex;gap:8px;margin-left:auto">
+      <input id="kw-input" type="text" placeholder="关键词过滤…"
+             onkeydown="if(event.key==='Enter')doFilter()" style="max-width:260px"/>
+      <button class="btn btn-p btn-sm" onclick="doFilter()">筛选</button>
+      <button class="btn btn-g btn-sm" onclick="loadRandom()">随机</button>
+    </div>
+  </div>
+  <div id="search-status" class="status-bar"></div>
+  <div id="q-list" class="q-list"></div>
+</div>
+ 
+<div class="page" id="page-graph">
+  <div style="display:flex;gap:8px;margin-bottom:14px">
+    <input id="gid-input" type="text"
+      placeholder="输入问题 ID（可从检索页点击任意问题自动跳转）"/>
+    <button class="btn btn-p" onclick="loadGraph(false)">可视化</button>
+    <button class="btn btn-g" id="btn-toggle-all" onclick="toggleAllSentences()"
+      title="展开/折叠全部句子节点">展开全部句子</button>
+  </div>
+ 
+  <div id="graph-layout">
+    <div id="graph-sidebar">
+      <div class="card">
+        <div class="card-title">图例</div>
+        <div class="legend">
+          <div class="leg"><div class="leg-dot" style="background:var(--q)"></div>问题</div>
+          <div class="leg"><div class="leg-dot" style="background:var(--c)"></div>上下文文章</div>
+          <div class="leg"><div class="leg-dot" style="background:var(--s)"></div>支持事实</div>
+          <div class="leg"><div class="leg-dot" style="background:var(--muted2)"></div>普通句子</div>
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:var(--muted);line-height:1.6">
+          点击文章节点可<strong style="color:var(--accent)">展开</strong>其全部句子<br/>
+          点击节点查看详情，滚轮缩放，拖拽移动
+        </div>
+      </div>
+      <div class="card" id="node-info" style="flex:1">
+        <div class="card-title">节点详情</div>
+        <div class="node-info-body" style="color:var(--muted)">
+          点击图中任意节点…
+        </div>
+      </div>
+    </div>
+    <div id="graph-canvas">
+      <div id="graph-controls">
+        <button class="btn btn-g btn-sm" onclick="network&&network.fit()">适应画面</button>
+      </div>
+      <div class="empty" style="margin:80px auto;width:fit-content;border:none">
+        在上方输入问题 ID，点击「可视化」
+      </div>
+    </div>
+  </div>
+</div>
+ 
+<div class="page" id="page-cluster">
+  <div id="cluster-loading" class="loading"><div class="spin"></div>正在加载聚类数据…</div>
+  <div id="cluster-body" style="display:none">
+    <div class="cluster-grid" id="stat-charts"></div>
+    <div style="margin:20px 0 10px">
+      <div class="card-title" style="font-size:13px">主题聚类（基于关键词）
+        <span style="font-weight:400;color:var(--muted);margin-left:6px">
+          — 点击主题卡片展开示例问题</span>
+      </div>
+    </div>
+    <div class="topic-grid" id="topic-grid"></div>
+  </div>
+</div>
+ 
+<div id="toast"></div>
+ 
+<script>
+// 全局静态数据缓存
+let globalQuestionsData = [];
+let globalGraphCache = new Map();
+
+function toast(msg, ms=2200) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  setTimeout(() => el.classList.remove("show"), ms);
+}
+ 
+document.querySelectorAll(".tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("page-" + btn.dataset.tab).classList.add("active");
+    if (btn.dataset.tab === "cluster") loadCluster();
+  });
+});
+ 
+function fmtN(n) {
+  if (n == null) return "—";
+  return n >= 1000 ? (n/1000).toFixed(1)+"k" : String(n);
+}
+function tagHtml(type, level) {
+  const t = type==="bridge"?'<span class="tag tag-bridge">bridge</span>'
+           :type==="comparison"?'<span class="tag tag-comparison">comparison</span>':"";
+  const l = level==="easy"?'<span class="tag tag-easy">easy</span>'
+           :level==="medium"?'<span class="tag tag-medium">medium</span>'
+           :level==="hard"?'<span class="tag tag-hard">hard</span>':"";
+  return t+l;
+}
+function renderQList(items, containerId, statusId, statusText) {
+  const el = document.getElementById(containerId);
+  if (statusId) document.getElementById(statusId).textContent = statusText||"";
+  if (!items.length) { el.innerHTML='<div class="empty">没有找到匹配的问题</div>'; return; }
+  el.innerHTML = items.map(q=>`
+    <div class="q-item" onclick="goGraph('${q.id}')">
+      <div>
+        <div class="q-text">${q.text}</div>
+        <div class="q-meta">${tagHtml(q.type,q.level)}
+          <span style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${q.id}</span>
+        </div>
+      </div>
+      <div class="q-ans">${q.answer}</div>
+    </div>`).join("");
+}
+ 
+async function loadStaticData() {
+  try {
+    const response = await fetch("static_questions.json");
+    if (!response.ok) throw new Error("JSON文件加载失败");
+    const data = await response.json();
+    globalQuestionsData = data;
+    
+    const totalQuestions = data.length;
+    const contextsSet = new Set();
+    const sentencesSet = new Set();
+    data.forEach(q => {
+      if (q.supporting_facts) {
+        q.supporting_facts.forEach(fact => {
+          if (fact.context) contextsSet.add(fact.context);
+          if (fact.sentence) sentencesSet.add(fact.sentence);
+        });
+      }
+    });
+    document.getElementById("st-q").textContent = fmtN(totalQuestions);
+    document.getElementById("st-c").textContent = fmtN(contextsSet.size);
+    document.getElementById("st-s").textContent = fmtN(sentencesSet.size);
+    
+    toast(`已加载 ${totalQuestions} 条问题数据`);
+    return true;
+  } catch(e) {
+    console.error("加载静态数据失败:", e);
+    document.getElementById("st-q").textContent = "0";
+    toast("未找到 static_questions.json 文件，请确保文件已上传");
+    return false;
+  }
+}
+ 
+async function doAnswer() {
+  if (globalQuestionsData.length === 0) await loadStaticData();
+  const keyword = document.getElementById("qa-input").value.trim().toLowerCase();
+  if (!keyword) return;
+  const status = document.getElementById("qa-status");
+  const results = document.getElementById("qa-results");
+  status.innerHTML = '<span class="loading"><span class="spin"></span>查询中…</span>';
+  results.innerHTML = "";
+  
+  const matched = globalQuestionsData.filter(q => 
+    q.text && q.text.toLowerCase().includes(keyword)
+  ).slice(0, 5);
+  
+  if (matched.length === 0) {
+    status.textContent = "";
+    results.innerHTML = '<div class="empty">未找到匹配的问题，请尝试其他关键词</div>';
+    return;
+  }
+  
+  status.textContent = `找到 ${matched.length} 条匹配问题`;
+  results.innerHTML = matched.map(item => `
+    <div class="ans-card">
+      <div class="ans-label">问题</div>
+      <div class="ans-q">${item.text}</div>
+      <div class="ans-label">答案</div>
+      <div class="ans-a">${item.answer || "暂未获取"}</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+        ${tagHtml(item.type,item.level)}
+        <button class="btn btn-g btn-sm" onclick="goGraph('${item.id}')">查看多跳图谱</button>
+      </div>
+      <div class="ans-label">关键支撑句（${item.supporting_facts ? item.supporting_facts.length : 0} 条）</div>
+      <div class="facts-list">
+        ${item.supporting_facts ? item.supporting_facts.map(f=>`
+          <div class="fact-item">
+            ${f.sentence}
+            <div class="fact-source">来源：${f.context}，第 ${(f.sent_index||0)+1} 句</div>
+          </div>`).join("") : '<div class="fact-item">暂无支撑句数据</div>'}
+      </div>
+    </div>`).join("");
+}
+ 
+["fg-type","fg-level"].forEach(gid => {
+  document.getElementById(gid).querySelectorAll(".filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      btn.closest(".filter-group").querySelectorAll(".filter-btn")
+         .forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      if (gid==="fg-type") filterState.type=btn.dataset.val;
+      else filterState.level=btn.dataset.val;
+    });
+  });
+});
+ 
+let filterState = { type: "", level: "" };
+ 
+async function doFilter() {
+  if (globalQuestionsData.length === 0) await loadStaticData();
+  const kw = document.getElementById("kw-input").value.trim().toLowerCase();
+  let filtered = [...globalQuestionsData];
+  if (filterState.type) filtered = filtered.filter(q => q.type === filterState.type);
+  if (filterState.level) filtered = filtered.filter(q => q.level === filterState.level);
+  if (kw) filtered = filtered.filter(q => q.text && q.text.toLowerCase().includes(kw));
+  filtered = filtered.slice(0, 40);
+  renderQList(filtered, "q-list", "search-status",
+    `显示 ${filtered.length} 条` + (filterState.type?` · ${filterState.type}`:"")
+    + (filterState.level?` · ${filterState.level}`:"")
+    + (kw?` · "${kw}"`:""));
+}
+ 
+async function loadRandom() {
+  if (globalQuestionsData.length === 0) await loadStaticData();
+  document.getElementById("search-status").innerHTML = '<span class="loading"><span class="spin"></span>加载随机样本…</span>';
+  document.getElementById("q-list").innerHTML = "";
+  const shuffled = [...globalQuestionsData];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  const randomItems = shuffled.slice(0, 20);
+  renderQList(randomItems, "q-list", "search-status", `随机展示 ${randomItems.length} 条 · 点击任意问题查看多跳图谱`);
+}
+ 
+function goGraph(qid) {
+  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+  document.querySelector('[data-tab="graph"]').classList.add("active");
+  document.getElementById("page-graph").classList.add("active");
+  document.getElementById("gid-input").value = qid;
+  showAllSentences = false;
+  document.getElementById("btn-toggle-all").textContent = "展开全部句子";
+  loadGraph(false);
+}
+ 
+let network = null;
+let currentGraphId = null;
+let showAllSentences = false;
+ 
+async function loadGraph(all) {
+  const qid = document.getElementById("gid-input").value.trim();
+  if (!qid) return toast("请输入问题 ID");
+  currentGraphId = qid;
+  const canvas = document.getElementById("graph-canvas");
+  canvas.innerHTML = `<div id="graph-controls"><button class="btn btn-g btn-sm" onclick="network&&network.fit()">适应画面</button></div><div class="loading" style="justify-content:center;padding:80px"><div class="spin"></div>构建推理图谱…</div>`;
+  resetNodeInfo();
+  
+  const question = globalQuestionsData.find(q => q.id === qid);
+  if (!question) {
+    canvas.innerHTML = `<div class="empty" style="margin:80px auto;width:fit-content;border:none">未找到 ID「${qid}」的问题数据</div>`;
+    return;
+  }
+  
+  const nodes = [];
+  const edges = [];
+  const nodeMap = new Map();
+  
+  const qNodeId = `q_${qid}`;
+  nodes.push({
+    id: qNodeId,
+    label: "问题",
+    group: "question",
+    data: { type: "question", text: question.text, answer: question.answer, qtype: question.type, level: question.level }
+  });
+  nodeMap.set(qNodeId, true);
+  
+  if (question.supporting_facts && question.supporting_facts.length > 0) {
+    question.supporting_facts.forEach((fact, idx) => {
+      if (fact.context) {
+        const ctxId = `ctx_${fact.context.replace(/\s/g, '_')}`;
+        if (!nodeMap.has(ctxId)) {
+          nodes.push({
+            id: ctxId,
+            label: fact.context,
+            group: "context",
+            data: { type: "context", title: fact.context }
+          });
+          nodeMap.set(ctxId, true);
+        }
+        edges.push({ from: qNodeId, to: ctxId, dashes: false });
+        
+        const sentId = `sent_${idx}`;
+        nodes.push({
+          id: sentId,
+          label: fact.sentence ? (fact.sentence.substring(0, 50) + (fact.sentence.length > 50 ? "..." : "")) : "句子",
+          group: "supporting_sentence",
+          data: { type: "sentence", text: fact.sentence, context: fact.context, sent_index: fact.sent_index || idx }
+        });
+        edges.push({ from: ctxId, to: sentId, dashes: false });
+      }
+    });
+  }
+  
+  const graphData = { nodes, edges };
+  canvas.innerHTML = `<div id="graph-controls"><button class="btn btn-g btn-sm" onclick="network&&network.fit()">适应画面</button></div>`;
+  drawGraph(graphData, canvas);
+  toast(`已渲染 ${nodes.length} 个节点，${edges.length} 条边`);
+}
+ 
+function toggleAllSentences() {
+  showAllSentences = !showAllSentences;
+  document.getElementById("btn-toggle-all").textContent = showAllSentences ? "仅显示支撑句" : "展开全部句子";
+  if (currentGraphId) loadGraph(showAllSentences);
+}
+ 
+function resetNodeInfo() {
+  document.getElementById("node-info").innerHTML = '<div class="card-title">节点详情</div><div class="node-info-body" style="color:var(--muted)">点击图中任意节点…</div>';
+}
+ 
+const COLORS = {
+  question:            {bg:"#ede9fe",border:"#7c3aed",font:"#5b21b6"},
+  context:             {bg:"#dbeafe",border:"#2563eb",font:"#1e40af"},
+  sentence:            {bg:"#f1f5f9",border:"#cbd5e1",font:"#475569"},
+  supporting_sentence: {bg:"#fee2e2",border:"#dc2626",font:"#b91c1c"},
+};
+ 
+function drawGraph(data, container) {
+  const vNodes = new vis.DataSet(data.nodes.map(n=>{
+    const col = COLORS[n.group]||COLORS.sentence;
+    return {
+      ...n,
+      color:{background:col.bg,border:col.border,highlight:{background:col.bg,border:"#1a2332"},hover:{background:col.bg,border:"#1a2332"}},
+      font:{color:col.font,size:n.group==="question"?13:11,strokeWidth:0},
+      size: n.group==="question"?30:n.group==="context"?18:n.group==="supporting_sentence"?14:8,
+      shadow:{enabled:n.group!=="sentence", color:"rgba(0,0,0,0.08)", size:6},
+    };
+  }));
+ 
+  const vEdges = new vis.DataSet(data.edges.map(e=>({
+    ...e,
+    color: {color:"#94a3b8",opacity:.7},
+    font:{color:"#64748b",size:9,align:"middle",strokeWidth:0},
+    arrows:{to:{enabled:true,scaleFactor:.5}},
+    smooth:{type:"continuous",roundness:.2},
+    width: 1,
+  })));
+ 
+  const opts = {
+    layout:{improvedLayout:true,randomSeed:42},
+    physics:{solver:"forceAtlas2Based",forceAtlas2Based:{gravitationalConstant:-80,centralGravity:.005,springLength:130,springConstant:.04,damping:.4},stabilization:{iterations:200,updateInterval:20}},
+    interaction:{hover:true,tooltipDelay:150,zoomView:true,dragNodes:true,multiselect:false},
+    nodes:{borderWidth:1.5,borderWidthSelected:2.5},
+    edges:{smooth:{type:"continuous"}},
+  };
+ 
+  if (network) network.destroy();
+  network = new vis.Network(container, {nodes: vNodes, edges: vEdges}, opts);
+  
+  network.on("click", params=>{
+    if (!params.nodes.length) return;
+    const nid = params.nodes[0];
+    const node = data.nodes.find(n=>n.id===nid);
+    if (!node) return;
+    const d = node.data || {};
+    let html = "";
+    if (d.type==="question") {
+      html = `<div class="info-key">问题</div><div class="node-info-body">${d.text}</div><div class="info-key">答案</div><div style="font-size:18px;font-weight:700;color:var(--green);font-family:var(--mono)">${d.answer}</div><div style="margin-top:10px">${tagHtml(d.qtype,d.level)}</div>`;
+    } else if (d.type==="context") {
+      html = `<div class="info-key">文章标题</div><div class="node-info-body">${d.title}</div><div style="margin-top:10px;font-size:12px;color:var(--muted)">双击此节点展开全部句子</div>`;
+    } else {
+      const isKey = node.group==="supporting_sentence";
+      html = `<div class="info-key">${isKey?"关键支撑句":"普通句子"}</div><div class="node-info-body" style="${isKey?"background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.2);border-radius:6px;padding:10px":""}">${d.text||node.label}</div>`;
+    }
+    document.getElementById("node-info").innerHTML = '<div class="card-title">节点详情</div>' + html;
+  });
+}
+ 
+loadStaticData();
+</script>
+</body>
+</html>
